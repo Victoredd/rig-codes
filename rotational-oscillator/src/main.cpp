@@ -1,11 +1,31 @@
 #include <Arduino.h>
+#include <vector>
+
+// Web functionality declarations
+void initWebServer();
+void handleWebServer();
+
+
 // CONSTANT DECLARATIONS
 constexpr int MOTOR1 = 12;
 constexpr int MOTOR2 = 13;
 constexpr int PWM_CH1 = 0;
 constexpr int PWM_CH2 = 1;
-constexpr int PWM_FREQ = 50;      // Hz control signal
-constexpr int PWM_RESOLUTION = 16;      // resolution in bits
+constexpr int PWM_FREQ = 50; // Hz control signal
+constexpr int PWM_RESOLUTION = 16; // resolution in bits
+
+struct DataPoint {
+    uint32_t timestamp;
+    float sensorValue;
+    int selectedSensor;
+    float controlOutput;
+    int strategyUsed;
+};
+
+volatile bool running = false;
+volatile int selectedStrategy = 0;
+volatile int selectedSensor = 0; // Despite the rotational oscillator only having one sensor, this makes it more homogenous with the vertical oscillator code
+std::vector<DataPoint> dataLog;
 
 // ESC range (microseconds)
 constexpr uint32_t ESC_MIN_PULSE = 1000;
@@ -16,11 +36,11 @@ constexpr float STRATEGY_OUTPUT_MIN = 0.0;
 constexpr float STRATEGY_OUTPUT_MAX = 1.0;
 
 // Derived constants
-constexpr float PERIOD_US = 1000000.0f / PWM_FREQ;     // 20000.0 microseconds
+constexpr float PERIOD_US = 1000000.0f / PWM_FREQ; // 20000.0 microseconds
 constexpr uint32_t MAX_DUTY = (1UL << PWM_RESOLUTION) - 1UL;
 constexpr uint32_t MIN_DUTY = (uint32_t)((ESC_MIN_PULSE / PERIOD_US) * (float)MAX_DUTY + 0.5f);
 
-// FUNCTION DECLARATIONS
+// FUNCTIONS
 
 // Constrain to [a,b]
 float clamp(float v, float a, float b) {
@@ -71,4 +91,55 @@ void setMotorPower(float controlValue) {
   }
 }
 
+float sensorRead() {
+  ; // TBD: take whatever sensor is being used and use its library for a measurement
+}
+
+void calibrate() {
+  ; // TBD: take measurement, wait, take another measurement. use as parameter for control strategies/to define setpoint at middle
+}
+
+float runControl(float sensorValue) {
+  ; // based on control strategy flag, run it through whatever strategy is selected. return the control output. use calibrate's parameters
+}
+
 // SETUP AND LOOP
+
+void setup() {
+  // PWM
+  ledcSetup(PWM_CH1, PWM_FREQ, PWM_RESOLUTION);
+  ledcSetup(PWM_CH2, PWM_FREQ, PWM_RESOLUTION);
+  ledcAttachPin(MOTOR1, PWM_CH1);
+  ledcAttachPin(MOTOR2, PWM_CH2);
+
+  // Web server (http://esprig.local)
+  initWebServer();
+
+  // ESC arming
+  ledcWrite(PWM_CH1, MIN_DUTY);
+  ledcWrite(PWM_CH2, MIN_DUTY);
+  delay(2000);
+}
+
+void loop() {
+  handleWebServer();
+  if (running) {
+    float sensorValue = sensorRead();
+    float controlOutput = runControl(sensorValue);
+    setMotorPower(controlOutput);
+
+    // Log data
+    DataPoint dp;
+    dp.timestamp = millis();
+    dp.sensorValue = sensorValue;
+    dp.selectedSensor = selectedSensor; //get from web
+    dp.controlOutput = controlOutput;
+    dp.strategyUsed = selectedStrategy; //get from web
+    dataLog.push_back(dp);
+
+  } else {
+    // Not running
+    setMotorPower(0.0);
+  }
+  delay(5); 
+}
