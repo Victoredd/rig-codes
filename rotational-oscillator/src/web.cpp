@@ -251,7 +251,6 @@ void initWebServer() {
 
     // Start the server
     server.begin();
-    Serial.println("HTTP server started");
 }
 
 /**

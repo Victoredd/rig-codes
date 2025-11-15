@@ -14,6 +14,18 @@ constexpr int PWM_CH2 = 1;
 constexpr int PWM_FREQ = 50; // Hz control signal
 constexpr int PWM_RESOLUTION = 16; // resolution in bits
 
+// Tweak later
+float gain_p = 0.5;
+float gain_d = 0.1;
+float gain_i = 0.1;
+unsigned long lastLoopTime = 0;
+float integralSum = 0.0;
+float error = 0.0;
+float lastError = 0.0;
+
+float calibLow = 0.0;
+float calibHigh = 0.0;
+
 struct DataPoint {
     uint32_t timestamp;
     float sensorValue;
@@ -97,11 +109,39 @@ float sensorRead(int selectedSensor) {
 }
 
 void calibrate(int selectedSensor) {
-  ; // TBD: take measurement, wait, take another measurement. use as parameter for control strategies/to define setpoint at middle
+  calibLow = sensorRead(selectedSensor);
+  delay(5000);
+  calibHigh = sensorRead(selectedSensor);
 }
 
 float runControl(float sensorValue, int selectedStrategy) {
-  ; // based on control strategy flag, run it through whatever strategy is selected. return the control output. use calibrate's parameters
+  float middle = (calibLow + calibHigh) / 2.0;
+  unsigned long now = millis();
+  float dt = (now - lastLoopTime) / 1000.0;
+  lastLoopTime = now;
+  lastError = error;
+  error = middle - sensorValue;
+  // 0/other = dummy, 1 = P, 2 = on/off, 3 = PID
+  switch(selectedStrategy) {
+    default: return 0.0;
+    case 1: {
+      // proportional
+      return gain_p * error;
+    }
+    case 2: {
+      // on/off
+      if (error > 0) return 1.0; //max power one way
+      else if (error < 0) return -1.0; //max power other way
+      else return 0.0; // if it's exactly down the middle
+
+    }
+    case 3: {
+      // PID
+      integralSum += error * dt;
+      float derivative = (error - lastError) / dt;
+      return gain_p * error + gain_i * integralSum + gain_d * derivative;
+    }
+  }
 }
 
 // SETUP AND LOOP
@@ -129,6 +169,8 @@ void loop() {
     if (!wasRunning) {
       dataLog.clear();
       wasRunning = true;
+      integralSum = 0.0;
+      lastLoopTime = millis();
     }
     // Avoid race conditions
     int currentSensor = selectedSensor;
