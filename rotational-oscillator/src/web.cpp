@@ -27,7 +27,7 @@ struct DataPoint {
     float sensorValue;
     int selectedSensor;
     float controlOutput;
-    int strategyUsed;
+    int selectedStrategy;
 };
 
 // ----------------------------------------------------------------------------
@@ -37,6 +37,7 @@ struct DataPoint {
 // These variables are controlled by the web server
 extern volatile bool running;
 extern volatile int selectedStrategy;
+extern volatile int selectedSensor;
 
 // This data log is read by the web server for download
 extern std::vector<DataPoint> dataLog;
@@ -57,7 +58,7 @@ WebServer server(80);
 // ----------------------------------------------------------------------------
 
 // Forward declaration (calibrate is declared in main.cpp)
-void calibrate();
+void calibrate(int selectedSensor);
 
 // ----------------------------------------------------------------------------
 // HTML/CSS for Web UI
@@ -166,7 +167,7 @@ void handleStop() {
  * @brief Calls the calibrate() function and redirects to root.
  */
 void handleCalibrate() {
-    calibrate(); // Call the placeholder function
+    calibrate(selectedSensor);
     server.sendHeader("Location", "/");
     server.send(302, "text/plain", "Calibrating...");
 }
@@ -202,7 +203,7 @@ void handleDownload() {
         csv += String(dp.sensorValue) + ",";
         csv += String(dp.selectedSensor) + ",";
         csv += String(dp.controlOutput) + ",";
-        csv += String(dp.strategyUsed) + "\n";
+        csv += String(dp.selectedStrategy) + "\n";
     }
 
     // Send the CSV file as an attachment

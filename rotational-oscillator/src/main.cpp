@@ -92,15 +92,15 @@ void setMotorPower(float controlValue) {
   }
 }
 
-float sensorRead() {
+float sensorRead(int selectedSensor) {
   ; // TBD: take whatever sensor is being used and use its library for a measurement
 }
 
-void calibrate() {
+void calibrate(int selectedSensor) {
   ; // TBD: take measurement, wait, take another measurement. use as parameter for control strategies/to define setpoint at middle
 }
 
-float runControl(float sensorValue) {
+float runControl(float sensorValue, int selectedStrategy) {
   ; // based on control strategy flag, run it through whatever strategy is selected. return the control output. use calibrate's parameters
 }
 
@@ -130,9 +130,12 @@ void loop() {
       dataLog.clear();
       wasRunning = true;
     }
+    // Avoid race conditions
+    int currentSensor = selectedSensor;
+    int currentStrategy = selectedStrategy;
 
-    float sensorValue = sensorRead();
-    float controlOutput = runControl(sensorValue);
+    float sensorValue = sensorRead(currentSensor);
+    float controlOutput = runControl(sensorValue, currentStrategy);
     setMotorPower(controlOutput);
 
     // Log data

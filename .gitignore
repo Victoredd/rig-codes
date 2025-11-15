@@ -4,4 +4,5 @@ Thumbs.db
 *.log
 .gitignore
 build/
-
+*.checksum
+*.json
