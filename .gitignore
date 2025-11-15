@@ -1,22 +1,7 @@
-# OS files
 .DS_Store
 Thumbs.db
-
-# VS Code settings
 .vscode/
-
-# Node.js
-node_modules/
-dist/
-
-# Python
-__pycache__/
-*.pyc
-venv/
-
-# Logs
 *.log
-
-# Build artifacts
+.gitignore
 build/
 
