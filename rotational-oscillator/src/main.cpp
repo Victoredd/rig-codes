@@ -25,6 +25,7 @@ struct DataPoint {
 volatile bool running = false;
 volatile int selectedStrategy = 0;
 volatile int selectedSensor = 0; // Despite the rotational oscillator only having one sensor, this makes it more homogenous with the vertical oscillator code
+bool wasRunning = false; // was running in last loop?
 std::vector<DataPoint> dataLog;
 
 // ESC range (microseconds)
@@ -124,6 +125,12 @@ void setup() {
 void loop() {
   handleWebServer();
   if (running) {
+
+    if (!wasRunning) {
+      dataLog.clear();
+      wasRunning = true;
+    }
+
     float sensorValue = sensorRead();
     float controlOutput = runControl(sensorValue);
     setMotorPower(controlOutput);
@@ -132,14 +139,15 @@ void loop() {
     DataPoint dp;
     dp.timestamp = millis();
     dp.sensorValue = sensorValue;
-    dp.selectedSensor = selectedSensor; //get from web
+    dp.selectedSensor = selectedSensor; // get from web
     dp.controlOutput = controlOutput;
-    dp.strategyUsed = selectedStrategy; //get from web
+    dp.strategyUsed = selectedStrategy; // get from web
     dataLog.push_back(dp);
 
   } else {
     // Not running
     setMotorPower(0.0);
+    if (wasRunning) wasRunning = false;
   }
   delay(5); 
 }
