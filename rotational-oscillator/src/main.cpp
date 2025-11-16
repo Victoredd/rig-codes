@@ -25,6 +25,7 @@ float lastError = 0.0;
 
 float calibLow = 0.0;
 float calibHigh = 0.0;
+float calibMiddle = 0.0;
 
 struct DataPoint {
     uint32_t timestamp;
@@ -112,15 +113,15 @@ void calibrate(int selectedSensor) {
   calibLow = sensorRead(selectedSensor);
   delay(5000);
   calibHigh = sensorRead(selectedSensor);
+  calibMiddle = (calibLow + calibHigh) / 2.0;
 }
 
 float runControl(float sensorValue, int selectedStrategy) {
-  float middle = (calibLow + calibHigh) / 2.0;
   unsigned long now = millis();
   float dt = (now - lastLoopTime) / 1000.0;
   lastLoopTime = now;
   lastError = error;
-  error = middle - sensorValue;
+  error = calibMiddle - sensorValue;
   // 0/other = dummy, 1 = P, 2 = on/off, 3 = PID
   switch(selectedStrategy) {
     default: return 0.0;
