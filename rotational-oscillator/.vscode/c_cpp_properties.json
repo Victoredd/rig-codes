@@ -10,6 +10,9 @@
             "includePath": [
                 "/Users/victorvillarejo/Documents/PlatformIO/Projects/rotational-oscillator/include",
                 "/Users/victorvillarejo/Documents/PlatformIO/Projects/rotational-oscillator/src",
+                "/Users/victorvillarejo/Documents/PlatformIO/Projects/rotational-oscillator/.pio/libdeps/esp32dev/SparkFun BNO08x Cortex Based IMU/src",
+                "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
+                "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
@@ -230,7 +233,6 @@
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/RainMaker/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SD/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
-                "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SimpleBLE/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
@@ -238,7 +240,6 @@
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                 "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
-                "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 ""
             ],
             "browse": {
@@ -246,6 +247,9 @@
                 "path": [
                     "/Users/victorvillarejo/Documents/PlatformIO/Projects/rotational-oscillator/include",
                     "/Users/victorvillarejo/Documents/PlatformIO/Projects/rotational-oscillator/src",
+                    "/Users/victorvillarejo/Documents/PlatformIO/Projects/rotational-oscillator/.pio/libdeps/esp32dev/SparkFun BNO08x Cortex Based IMU/src",
+                    "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
+                    "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
@@ -466,7 +470,6 @@
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/RainMaker/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SD/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
-                    "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/SimpleBLE/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
@@ -474,7 +477,6 @@
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                     "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
-                    "/Users/victorvillarejo/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     ""
                 ]
             },

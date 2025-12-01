@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <vector>
+#include "SparkFun_BNO08x_Arduino_Library.h"
 
 // Web functionality declarations
 void initWebServer();
@@ -23,14 +24,13 @@ float integralSum = 0.0;
 float error = 0.0;
 float lastError = 0.0;
 
-float calibLow = 0.0;
-float calibHigh = 0.0;
 float calibMiddle = 0.0;
 
 struct DataPoint {
     uint32_t timestamp;
     float sensorValue;
     int selectedSensor;
+    float error;
     float controlOutput;
     int strategyUsed;
 };
@@ -106,13 +106,13 @@ void setMotorPower(float controlValue) {
 }
 
 float sensorRead(int selectedSensor) {
-  ; // TBD: take whatever sensor is being used and use its library for a measurement
+  return gyro.getYaw();
 }
 
 void calibrate(int selectedSensor) {
-  calibLow = sensorRead(selectedSensor);
+  float calibLow = sensorRead(selectedSensor);
   delay(5000);
-  calibHigh = sensorRead(selectedSensor);
+  float calibHigh = sensorRead(selectedSensor);
   calibMiddle = (calibLow + calibHigh) / 2.0;
 }
 
@@ -145,9 +145,16 @@ float runControl(float sensorValue, int selectedStrategy) {
   }
 }
 
+// Gyro
+BNO08x gyro;
+
 // SETUP AND LOOP
 
 void setup() {
+  // Sensor
+  Wire.begin();
+  gyro.begin(0x4A, Wire, -1, -1); // 0x4A is default I2C address
+  gyro.enableRotationVector();
   // PWM
   ledcSetup(PWM_CH1, PWM_FREQ, PWM_RESOLUTION);
   ledcSetup(PWM_CH2, PWM_FREQ, PWM_RESOLUTION);
@@ -186,6 +193,7 @@ void loop() {
     dp.timestamp = millis();
     dp.sensorValue = sensorValue;
     dp.selectedSensor = selectedSensor; // get from web
+    dp.error = error;
     dp.controlOutput = controlOutput;
     dp.strategyUsed = selectedStrategy; // get from web
     dataLog.push_back(dp);
