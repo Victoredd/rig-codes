@@ -44,58 +44,48 @@ struct DataPoint {
 
 volatile bool running = false;
 volatile int selectedStrategy = 0;
-volatile int selectedSensor = 0; // Despite the rotational oscillator only having one sensor, this makes it more homogenous with the vertical oscillator code
-bool wasRunning = false; // was running in last loop?
+volatile int selectedSensor = 0; 
+bool wasRunning = false; 
+
+// DATA BUFFER (Used for streaming)
 std::vector<DataPoint> dataLog;
 
 // ESC range (microseconds)
 constexpr uint32_t ESC_MIN_PULSE = 1000;
 constexpr uint32_t ESC_MAX_PULSE = 2000;
 
-// Control strategy output range (rotational oscillator: [-1, 1], but magnitude is what matters and we interpret sign manually)
+// Control strategy output range 
 constexpr float STRATEGY_OUTPUT_MIN = 0.0;
 constexpr float STRATEGY_OUTPUT_MAX = 1.0;
 
 // Derived constants
-constexpr float PERIOD_US = 1000000.0f / PWM_FREQ; // 20000.0 microseconds
+constexpr float PERIOD_US = 1000000.0f / PWM_FREQ; 
 constexpr uint32_t MAX_DUTY = (1UL << PWM_RESOLUTION) - 1UL;
 constexpr uint32_t MIN_DUTY = (uint32_t)((ESC_MIN_PULSE / PERIOD_US) * (float)MAX_DUTY + 0.5f);
 
 // FUNCTIONS
 
-// Constrain to [a,b]
 float clamp(float v, float a, float b) {
   if (v < a) return a;
   if (v > b) return b;
   return v;
 }
 
-// Linear map from range to another
 float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
   float t = (x - in_min) / (in_max - in_min);
   return out_min + t * (out_max - out_min);
 }
 
-// Control strategy output to duty value for ESC
 uint32_t controlToDuty(float controlValue) {
-  // Clamp control input to valid range
   float v = clamp(controlValue, STRATEGY_OUTPUT_MIN, STRATEGY_OUTPUT_MAX);
-
-  // Control to pulse width
   float pulse = mapFloat(v, STRATEGY_OUTPUT_MIN, STRATEGY_OUTPUT_MAX, ESC_MIN_PULSE, ESC_MAX_PULSE);
-
-  // Pulse width to duty fraction of the period
   float fraction = pulse / PERIOD_US;
   fraction = clamp(fraction, 0.0f, 1.0f);
-
-  // Duty units and round
   uint32_t duty = (uint32_t)(fraction * (float)MAX_DUTY + 0.5f);
-
   return duty;
 }
 
 void setMotorPower(float controlValue) {
-  // swing one way or the other depending on sign of controlValue
   if (controlValue < 0) {
     uint32_t duty = controlToDuty(-controlValue);
     ledcWrite(PWM_CH1, MIN_DUTY);
@@ -119,24 +109,17 @@ float sensorRead(int selectedSensor) {
   return lastYaw;
 }
 
-// Split calib functions
 void calibrateLowStep(int selectedSensor) {
     float sum = 0.0;
-    for(int i = 0; i < 100; i++) {
-        sum += sensorRead(selectedSensor);
-        delay(10);
-    }
-    calibLowVal = sum / 100.0;
+    for(int i = 0; i < 200; i++) { sum += sensorRead(selectedSensor); delay(10); }
+    calibLowVal = sum / 200.0;
     calibMiddle = (calibLowVal + calibHighVal) / 2.0;
 }
 
 void calibrateHighStep(int selectedSensor) {
     float sum = 0.0;
-    for(int i = 0; i < 100; i++) {
-        sum += sensorRead(selectedSensor);
-        delay(10);
-    }
-    calibHighVal = sum / 100.0;
+    for(int i = 0; i < 200; i++) { sum += sensorRead(selectedSensor); delay(10); }
+    calibHighVal = sum / 200.0;
     calibMiddle = (calibLowVal + calibHighVal) / 2.0;
 }
 
@@ -146,27 +129,40 @@ float runControl(float sensorValue, int selectedStrategy) {
   lastLoopTime = now;
   lastError = error;
   error = calibMiddle - sensorValue;
-  // 0/other = dummy, 1 = P, 2 = on/off, 3 = PID
+  
   switch(selectedStrategy) {
     default: return 0.0;
-    case 1: {
-      // proportional
-      return gain_p * error;
+    case 1: return gain_p * error; 
+    case 2: { 
+      if (error > 0) return 1.0; 
+      else if (error < 0) return -1.0; 
+      else return 0.0; 
     }
-    case 2: {
-      // on/off
-      if (error > 0) return 1.0; //max power one way
-      else if (error < 0) return -1.0; //max power other way
-      else return 0.0; // if it's exactly down the middle
-
-    }
-    case 3: {
-      // PID
+    case 3: { 
       integralSum += error * dt;
       float derivative = (error - lastError) / dt;
       return gain_p * error + gain_i * integralSum + gain_d * derivative;
     }
   }
+}
+
+// Data streaming helper (too large to keep in esp32 memory)
+String getBufferCSV() {
+    String csv = "";
+    if (dataLog.empty()) return "";
+    
+    // Convert buffer to string
+    for (const auto& dp : dataLog) {
+        csv += String(dp.timestamp) + "," +
+               String(dp.sensorValue, 9) + "," +
+               String(dp.selectedSensor) + "," +
+               String(dp.error, 9) + "," +
+               String(dp.controlOutput, 9) + "," +
+               String(dp.strategyUsed) + "\n";
+    }
+    // Clear the buffer so it can fill up again
+    dataLog.clear(); 
+    return csv;
 }
 
 // SETUP AND LOOP
@@ -175,24 +171,24 @@ void setup() {
   delay(7000);
   Serial.begin(115200);
   Serial.println("Booting ESP32...");
-  // Gyroscope init
-  Wire.begin(21, 22); // SDA, SCL
-  Wire.setClock(400000); // 400 kHz
-  gyro.begin(0x4B, Wire, -1, -1); // 0x4B is default I2C address
+  
+  dataLog.reserve(1500); // Reserve memory
+
+  Wire.begin(21, 22); 
+  Wire.setClock(400000); 
+  gyro.begin(0x4B, Wire, -1, -1); 
   delay(500);
   gyro.enableRotationVector();
-  // PWM
+  
   ledcSetup(PWM_CH1, PWM_FREQ, PWM_RESOLUTION);
   ledcSetup(PWM_CH2, PWM_FREQ, PWM_RESOLUTION);
   ledcAttachPin(MOTOR1, PWM_CH1);
   ledcAttachPin(MOTOR2, PWM_CH2);
 
-  // Web server (http://esprig.local)
   Serial.println("Starting web server...");
   initWebServer();
   Serial.println("Web server started.");
 
-  // ESC arming
   ledcWrite(PWM_CH1, MIN_DUTY);
   ledcWrite(PWM_CH2, MIN_DUTY);
   delay(2000);
@@ -208,7 +204,7 @@ void loop() {
       integralSum = 0.0;
       lastLoopTime = micros();
     }
-    // Avoid race conditions
+    
     int currentSensor = selectedSensor;
     int currentStrategy = selectedStrategy;
 
@@ -216,19 +212,18 @@ void loop() {
     float controlOutput = runControl(sensorValue, currentStrategy);
     setMotorPower(controlOutput);
 
-    // Log data
-    DataPoint dp;
-    dp.timestamp = micros();
-    dp.sensorValue = sensorValue;
-    dp.selectedSensor = selectedSensor;
-    dp.error = error;
-    dp.controlOutput = controlOutput;
-    dp.strategyUsed = selectedStrategy;
-    dataLog.push_back(dp);
-    if (dataLog.size() > 7000) running = false; // stop after 7k data points, about 35 seconds at 200 Hz
-
+    if (dataLog.size() < 1500) {
+        DataPoint dp;
+        dp.timestamp = micros();
+        dp.sensorValue = sensorValue;
+        dp.selectedSensor = selectedSensor;
+        dp.error = error;
+        dp.controlOutput = controlOutput;
+        dp.strategyUsed = selectedStrategy;
+        dataLog.push_back(dp);
+    } 
+    // If buffer is full, packets are dropped
   } else {
-    // Not running
     setMotorPower(0.0);
     if (wasRunning) wasRunning = false;
   }
