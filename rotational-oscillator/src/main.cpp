@@ -6,6 +6,8 @@
 void initWebServer();
 void handleWebServer();
 
+// Gyro
+BNO08x gyro;
 
 // CONSTANT DECLARATIONS
 constexpr int MOTOR1 = 12;
@@ -110,9 +112,11 @@ float sensorRead(int selectedSensor) {
 }
 
 void calibrate(int selectedSensor) {
-  float calibLow = sensorRead(selectedSensor);
+  float calibLow = 0.0;
+  for(int i = 0; i < 10; i++) {calibLow += sensorRead(selectedSensor)/10; delay(50);}
   delay(5000);
-  float calibHigh = sensorRead(selectedSensor);
+  float calibHigh = 0.0;
+  for(int i = 0; i < 10; i++) {calibHigh += sensorRead(selectedSensor)/10; delay(50);}
   calibMiddle = (calibLow + calibHigh) / 2.0;
 }
 
@@ -145,15 +149,12 @@ float runControl(float sensorValue, int selectedStrategy) {
   }
 }
 
-// Gyro
-BNO08x gyro;
-
 // SETUP AND LOOP
 
 void setup() {
   // Sensor
   Wire.begin();
-  gyro.begin(0x4A, Wire, -1, -1); // 0x4A is default I2C address
+  gyro.begin(0x4B, Wire, -1, -1); // 0x4B is default I2C address
   gyro.enableRotationVector();
   // PWM
   ledcSetup(PWM_CH1, PWM_FREQ, PWM_RESOLUTION);

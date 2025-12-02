@@ -99,9 +99,11 @@ float sensorRead(int selectedSensor) {
 }
 
 void calibrate(int selectedSensor) {
-  calibLow = sensorRead(selectedSensor);
+  float calibLow = 0.0;
+  for(int i = 0; i < 10; i++) {calibLow += sensorRead(selectedSensor)/10; delay(50);}
   delay(5000);
-  calibHigh = sensorRead(selectedSensor);
+  float calibHigh = 0.0;
+  for(int i = 0; i < 10; i++) {calibHigh += sensorRead(selectedSensor)/10; delay(50);}
   calibMiddle = (calibLow + calibHigh) / 2.0;
 }
 
