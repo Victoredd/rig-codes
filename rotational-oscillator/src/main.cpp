@@ -8,18 +8,19 @@ void handleWebServer();
 
 // Gyro
 BNO08x gyro;
+float lastYaw = 0.0;
 
 // CONSTANT DECLARATIONS
-constexpr int MOTOR1 = 12;
-constexpr int MOTOR2 = 13;
+constexpr int MOTOR1 = 13;
+constexpr int MOTOR2 = 12;
 constexpr int PWM_CH1 = 0;
 constexpr int PWM_CH2 = 1;
 constexpr int PWM_FREQ = 50; // Hz control signal
 constexpr int PWM_RESOLUTION = 16; // resolution in bits
 
 // Tweak later
-float gain_p = 0.5;
-float gain_d = 0.1;
+float gain_p = 0.2;
+float gain_d = 0.05;
 float gain_i = 0.1;
 unsigned long lastLoopTime = 0;
 float integralSum = 0.0;
@@ -93,13 +94,13 @@ void setMotorPower(float controlValue) {
   // swing one way or the other depending on sign of controlValue
   if (controlValue < 0) {
     uint32_t duty = controlToDuty(-controlValue);
-    ledcWrite(PWM_CH1, duty);
-    ledcWrite(PWM_CH2, MIN_DUTY);
+    ledcWrite(PWM_CH1, MIN_DUTY);
+    ledcWrite(PWM_CH2, duty);
   }
   else if (controlValue > 0) {
     uint32_t duty = controlToDuty(controlValue);
-    ledcWrite(PWM_CH1, MIN_DUTY);
-    ledcWrite(PWM_CH2, duty);
+    ledcWrite(PWM_CH1, duty);
+    ledcWrite(PWM_CH2, MIN_DUTY);
   }
   else {
     ledcWrite(PWM_CH1, MIN_DUTY);
@@ -108,7 +109,10 @@ void setMotorPower(float controlValue) {
 }
 
 float sensorRead(int selectedSensor) {
-  return gyro.getYaw();
+  if (gyro.getSensorEvent() && gyro.getSensorEventID() == SENSOR_REPORTID_ROTATION_VECTOR) {
+    lastYaw = gyro.getYaw();
+  }
+  return lastYaw;
 }
 
 void calibrate(int selectedSensor) {
@@ -121,8 +125,8 @@ void calibrate(int selectedSensor) {
 }
 
 float runControl(float sensorValue, int selectedStrategy) {
-  unsigned long now = millis();
-  float dt = (now - lastLoopTime) / 1000.0;
+  unsigned long now = micros();
+  float dt = (now - lastLoopTime) / 1000000.0;
   lastLoopTime = now;
   lastError = error;
   error = calibMiddle - sensorValue;
@@ -152,8 +156,9 @@ float runControl(float sensorValue, int selectedStrategy) {
 // SETUP AND LOOP
 
 void setup() {
-  // Sensor
-  Wire.begin();
+  // Gyroscope init
+  Wire.begin(21, 22); // SDA, SCL
+  Wire.setClock(400000); // 400 kHz
   gyro.begin(0x4B, Wire, -1, -1); // 0x4B is default I2C address
   gyro.enableRotationVector();
   // PWM
@@ -179,7 +184,7 @@ void loop() {
       dataLog.clear();
       wasRunning = true;
       integralSum = 0.0;
-      lastLoopTime = millis();
+      lastLoopTime = micros();
     }
     // Avoid race conditions
     int currentSensor = selectedSensor;
@@ -191,7 +196,7 @@ void loop() {
 
     // Log data
     DataPoint dp;
-    dp.timestamp = millis();
+    dp.timestamp = micros();
     dp.sensorValue = sensorValue;
     dp.selectedSensor = selectedSensor; // get from web
     dp.error = error;
