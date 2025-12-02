@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <vector>
+#include <Wire.h> 
 #include "SparkFun_BNO08x_Arduino_Library.h"
 
 // Web functionality declarations
@@ -27,7 +28,10 @@ float integralSum = 0.0;
 float error = 0.0;
 float lastError = 0.0;
 
+// Calibration Variables
 float calibMiddle = 0.0;
+float calibLowVal = 0.0; 
+float calibHighVal = 0.0;
 
 struct DataPoint {
     uint32_t timestamp;
@@ -115,13 +119,25 @@ float sensorRead(int selectedSensor) {
   return lastYaw;
 }
 
-void calibrate(int selectedSensor) {
-  float calibLow = 0.0;
-  for(int i = 0; i < 10; i++) {calibLow += sensorRead(selectedSensor)/10; delay(50);}
-  delay(5000);
-  float calibHigh = 0.0;
-  for(int i = 0; i < 10; i++) {calibHigh += sensorRead(selectedSensor)/10; delay(50);}
-  calibMiddle = (calibLow + calibHigh) / 2.0;
+// Split calib functions
+void calibrateLowStep(int selectedSensor) {
+    float sum = 0.0;
+    for(int i = 0; i < 100; i++) {
+        sum += sensorRead(selectedSensor);
+        delay(10);
+    }
+    calibLowVal = sum / 100.0;
+    calibMiddle = (calibLowVal + calibHighVal) / 2.0;
+}
+
+void calibrateHighStep(int selectedSensor) {
+    float sum = 0.0;
+    for(int i = 0; i < 100; i++) {
+        sum += sensorRead(selectedSensor);
+        delay(10);
+    }
+    calibHighVal = sum / 100.0;
+    calibMiddle = (calibLowVal + calibHighVal) / 2.0;
 }
 
 float runControl(float sensorValue, int selectedStrategy) {
@@ -156,10 +172,14 @@ float runControl(float sensorValue, int selectedStrategy) {
 // SETUP AND LOOP
 
 void setup() {
+  delay(7000);
+  Serial.begin(115200);
+  Serial.println("Booting ESP32...");
   // Gyroscope init
   Wire.begin(21, 22); // SDA, SCL
   Wire.setClock(400000); // 400 kHz
   gyro.begin(0x4B, Wire, -1, -1); // 0x4B is default I2C address
+  delay(500);
   gyro.enableRotationVector();
   // PWM
   ledcSetup(PWM_CH1, PWM_FREQ, PWM_RESOLUTION);
@@ -168,7 +188,9 @@ void setup() {
   ledcAttachPin(MOTOR2, PWM_CH2);
 
   // Web server (http://esprig.local)
+  Serial.println("Starting web server...");
   initWebServer();
+  Serial.println("Web server started.");
 
   // ESC arming
   ledcWrite(PWM_CH1, MIN_DUTY);
@@ -198,11 +220,12 @@ void loop() {
     DataPoint dp;
     dp.timestamp = micros();
     dp.sensorValue = sensorValue;
-    dp.selectedSensor = selectedSensor; // get from web
+    dp.selectedSensor = selectedSensor;
     dp.error = error;
     dp.controlOutput = controlOutput;
-    dp.strategyUsed = selectedStrategy; // get from web
+    dp.strategyUsed = selectedStrategy;
     dataLog.push_back(dp);
+    if (dataLog.size() > 7000) running = false; // stop after 7k data points, about 35 seconds at 200 Hz
 
   } else {
     // Not running
