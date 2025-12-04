@@ -96,41 +96,52 @@ void loop() {
   Feel like supporting our work? Buy a board from SparkFun!
   https://www.sparkfun.com/products/22857
 */
+#include <Arduino.h>
 #include <Wire.h>
 #include "SparkFun_BNO08x_Arduino_Library.h"
 
 BNO08x gyro;
 
-#define BNO08X_ADDR 0x4B  // Default I2C address
-
 void setup() {
+  delay(7000);
   Serial.begin(115200);
-  Wire.begin(21, 22);       // SDA = 21, SCL = 22
-  Wire.setClock(400000);    // 400 kHz I2C
+  while (!Serial) delay(10); // Wait for serial monitor
 
-  // Initialize the gyro
-  if (!gyro.begin(BNO08X_ADDR, Wire, -1, -1)) {
-    Serial.println("BNO08x not detected. Check wiring.");
+  Serial.println("Initializing I2C...");
+  Wire.begin(21, 22);
+  Wire.setClock(400000); // Fast mode
+
+  Serial.println("Initializing BNO08x...");
+  if (gyro.begin(0x4B, Wire) == false) {
+    Serial.println("BNO08x not detected via I2C. Freeze/Reset.");
     while (1);
   }
 
-  // Enable rotation vector (required for getYaw())
-  gyro.enableRotationVector();
-
-  Serial.println();
-  Serial.println("BNO08x Read Example");
-  Serial.println("Reading events");
-  delay(100);
+  // Enable Game Rotation Vector (No magnetometer, just Gyro+Accel)
+  // 50ms report interval = 20Hz updates for reading
+  gyro.enableGameRotationVector(50); 
+  
+  Serial.println("Sensor Active. Rotate the drone.");
+  Serial.println("Time\tYaw(Z)\tPitch(X)\tRoll(Y)");
 }
 
 void loop() {
-  // Only read yaw if a new rotation vector event is available
-  if (gyro.getSensorEvent() && gyro.getSensorEventID() == SENSOR_REPORTID_ROTATION_VECTOR) {
-    float yaw = gyro.getYaw();  // Yaw in radians
-    Serial.println(yaw, 10);
-  }
+  if (gyro.getSensorEvent()) {
+    if (gyro.getSensorEventID() == SENSOR_REPORTID_GAME_ROTATION_VECTOR) {
+      
+      float yaw = gyro.getYaw();
+      float pitch = gyro.getPitch();
+      float roll = gyro.getRoll();
 
-  delay(10);
+      Serial.print(millis());
+      Serial.print("\t");
+      Serial.print(yaw, 3);
+      Serial.print("\t");
+      Serial.print(pitch, 3);
+      Serial.print("\t");
+      Serial.println(roll, 3);
+    }
+  }
 }
 
 /* i2c scanner

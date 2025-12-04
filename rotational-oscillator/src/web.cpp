@@ -37,7 +37,14 @@ extern volatile bool running;
 extern volatile int selectedStrategy;
 extern volatile int selectedSensor;
 extern float calibMiddle; 
+extern float calibLowVal;  
+extern float calibHighVal; 
 extern std::vector<DataPoint> dataLog;
+
+// PID Gains (Externally linked from main.cpp)
+extern float gain_p;
+extern float gain_i;
+extern float gain_d;
 
 // Helper function from main.cpp
 String getBufferCSV();
@@ -68,7 +75,8 @@ String getHTML() {
         body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
         h1 { color: #333; text-align: center; }
         .container { max-width: 600px; margin: auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        button, select { display: block; width: 100%; padding: 12px; margin: 10px 0; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; box-sizing: border-box; }
+        button, select, input { display: block; width: 100%; padding: 12px; margin: 10px 0; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; box-sizing: border-box; }
+        input { border: 1px solid #ccc; background: #fff; }
         select { background: #eee; }
         button { color: white; }
         .start { background: #28a745; } .start:hover { background: #218838; }
@@ -80,6 +88,7 @@ String getHTML() {
         .status-dot { height: 15px; width: 15px; border-radius: 50%; display: inline-block; margin-right: 8px; vertical-align: middle; }
         .running { background-color: #28a745; box-shadow: 0 0 8px #28a745; }
         .stopped { background-color: #dc3545; }
+        .gains-display { font-size: 0.9em; margin-top: 5px; color: #555; }
         #dataCount { font-weight: bold; color: #555; text-align: center; display: block; margin-top: 10px;}
     </style>
 </head>
@@ -94,6 +103,12 @@ String getHTML() {
     html += String(selectedStrategy); 
     
     html += R"rawliteral(</strong>
+            <div class="gains-display">
+                <strong>Current Gains:</strong> 
+                P: )rawliteral" + String(gain_p) + 
+                " | I: " + String(gain_i) + 
+                " | D: " + String(gain_d) + R"rawliteral(
+            </div>
         </div>
 
         <form action="/start" method="GET" onsubmit="startPolling()"><button class="start" type="submit">Start Experiment</button></form>
@@ -102,19 +117,28 @@ String getHTML() {
         <span id="dataCount">Recorded Points in Browser: 0</span>
 
         <hr>
+        <button class="download" onclick="downloadCSV()">Download Accumulated Data</button>
+
+        <hr>
+        <h3>PID Tuning</h3>
+        <form action="/setPID" method="GET">
+            <label>P Gain: <input type="number" step="0.001" name="p" value=")rawliteral" + String(gain_p) + R"rawliteral("></label>
+            <label>I Gain: <input type="number" step="0.001" name="i" value=")rawliteral" + String(gain_i) + R"rawliteral("></label>
+            <label>D Gain: <input type="number" step="0.001" name="d" value=")rawliteral" + String(gain_d) + R"rawliteral("></label>
+            <button class="btn-blue" type="submit">Update Gains</button>
+        </form>
+
+        <hr>
         <h3>Calibration</h3>
-        <p>1. Move rig to LOW position:</p>
+        <p>1. Move rig to LOW position (Last: <strong>)rawliteral" + String(calibLowVal) + R"rawliteral(</strong>):</p>
         <form action="/calibLow" method="GET"><button class="calib" type="submit">Record Low</button></form>
-        <p>2. Move rig to HIGH position:</p>
+        <p>2. Move rig to HIGH position (Last: <strong>)rawliteral" + String(calibHighVal) + R"rawliteral(</strong>):</p>
         <form action="/calibHigh" method="GET"><button class="calib" type="submit">Record High</button></form>
         <p><em>Calculated Middle: )rawliteral";
         
-    html += String(calibMiddle); 
+    html += String(calibMiddle);
 
     html += R"rawliteral(</em></p>
-
-        <hr>
-        <button class="download" onclick="downloadCSV()">Download Accumulated Data</button>
         
         <hr>
         <form action="/setStrategy" method="GET">
@@ -235,6 +259,16 @@ void handleSetStrategy() {
     server.send(302, "text/plain", "Strategy set.");
 }
 
+// NEW: PID Update Endpoint
+void handleSetPID() {
+    if (server.hasArg("p")) gain_p = server.arg("p").toFloat();
+    if (server.hasArg("i")) gain_i = server.arg("i").toFloat();
+    if (server.hasArg("d")) gain_d = server.arg("d").toFloat();
+    
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "PID Updated");
+}
+
 void handleDownload() {
     // Legacy download handler (optional, but kept for compatibility)
     // The JS downloadCSV() is now the primary method.
@@ -270,7 +304,8 @@ void initWebServer() {
     server.on("/calibLow", HTTP_GET, handleCalibLow);
     server.on("/calibHigh", HTTP_GET, handleCalibHigh);
     server.on("/setStrategy", HTTP_GET, handleSetStrategy);
-    server.on("/pollData", HTTP_GET, handlePollData); // Important!
+    server.on("/setPID", HTTP_GET, handleSetPID); // New PID handler
+    server.on("/pollData", HTTP_GET, handlePollData); 
     server.on("/download", HTTP_GET, handleDownload);
     server.onNotFound(handleNotFound);
 

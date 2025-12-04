@@ -9,7 +9,8 @@ void handleWebServer();
 
 // Gyro
 BNO08x gyro;
-float lastYaw = 0.0;
+float lastPitch = 0.0;
+unsigned long lastSensorUpdateTime = 0;
 
 // CONSTANT DECLARATIONS
 constexpr int MOTOR1 = 13;
@@ -86,15 +87,15 @@ uint32_t controlToDuty(float controlValue) {
 }
 
 void setMotorPower(float controlValue) {
-  if (controlValue < 0) {
-    uint32_t duty = controlToDuty(-controlValue);
-    ledcWrite(PWM_CH1, MIN_DUTY);
-    ledcWrite(PWM_CH2, duty);
-  }
-  else if (controlValue > 0) {
+  if (controlValue > 0) {
     uint32_t duty = controlToDuty(controlValue);
     ledcWrite(PWM_CH1, duty);
     ledcWrite(PWM_CH2, MIN_DUTY);
+  }
+  else if (controlValue < 0) {
+    uint32_t duty = controlToDuty(-controlValue);
+    ledcWrite(PWM_CH1, MIN_DUTY);
+    ledcWrite(PWM_CH2, duty);
   }
   else {
     ledcWrite(PWM_CH1, MIN_DUTY);
@@ -103,10 +104,14 @@ void setMotorPower(float controlValue) {
 }
 
 float sensorRead(int selectedSensor) {
-  if (gyro.getSensorEvent() && gyro.getSensorEventID() == SENSOR_REPORTID_ROTATION_VECTOR) {
-    lastYaw = gyro.getYaw();
+  for(int i = 0; i < 5; i++) {
+    if (gyro.getSensorEvent() && gyro.getSensorEventID() == SENSOR_REPORTID_GAME_ROTATION_VECTOR) {
+      lastSensorUpdateTime = millis();
+      lastPitch = gyro.getPitch();
+    }
+    delay(2);
   }
-  return lastYaw;
+  return lastPitch;
 }
 
 void calibrateLowStep(int selectedSensor) {
@@ -132,13 +137,14 @@ float runControl(float sensorValue, int selectedStrategy) {
   
   switch(selectedStrategy) {
     default: return 0.0;
-    case 1: return gain_p * error; 
+    case 1: return gain_p * error;
     case 2: { 
-      if (error > 0) return 1.0; 
-      else if (error < 0) return -1.0; 
+      if (error > 0) return gain_p; 
+      else if (error < 0) return -gain_p; 
       else return 0.0; 
     }
     case 3: { 
+      // Prevent Integral Windup
       integralSum += error * dt;
       float derivative = (error - lastError) / dt;
       return gain_p * error + gain_i * integralSum + gain_d * derivative;
@@ -175,10 +181,12 @@ void setup() {
   dataLog.reserve(1500); // Reserve memory
 
   Wire.begin(21, 22); 
-  Wire.setClock(400000); 
+  Wire.setClock(100000); // 100kHz
+
   gyro.begin(0x4B, Wire, -1, -1); 
   delay(500);
-  gyro.enableRotationVector();
+  
+  gyro.enableGameRotationVector(20);
   
   ledcSetup(PWM_CH1, PWM_FREQ, PWM_RESOLUTION);
   ledcSetup(PWM_CH2, PWM_FREQ, PWM_RESOLUTION);
@@ -196,8 +204,14 @@ void setup() {
 
 void loop() {
   handleWebServer();
-  if (running) {
+  if (gyro.getSensorEvent()) {
+      if (gyro.getSensorEventID() == SENSOR_REPORTID_GAME_ROTATION_VECTOR) {
+        lastSensorUpdateTime = millis();
+        lastPitch = gyro.getPitch();
+      }
+  }
 
+  if (running && (millis() - lastSensorUpdateTime) < 100) {
     if (!wasRunning) {
       dataLog.clear();
       wasRunning = true;
@@ -208,24 +222,22 @@ void loop() {
     int currentSensor = selectedSensor;
     int currentStrategy = selectedStrategy;
 
-    float sensorValue = sensorRead(currentSensor);
-    float controlOutput = runControl(sensorValue, currentStrategy);
+    float controlOutput = runControl(lastPitch, currentStrategy);
     setMotorPower(controlOutput);
 
     if (dataLog.size() < 1500) {
         DataPoint dp;
         dp.timestamp = micros();
-        dp.sensorValue = sensorValue;
+        dp.sensorValue = lastPitch;
         dp.selectedSensor = selectedSensor;
         dp.error = error;
         dp.controlOutput = controlOutput;
         dp.strategyUsed = selectedStrategy;
         dataLog.push_back(dp);
     } 
-    // If buffer is full, packets are dropped
-  } else {
+  } 
+  else {
     setMotorPower(0.0);
     if (wasRunning) wasRunning = false;
   }
-  delay(5); 
 }
