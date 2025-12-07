@@ -40,6 +40,7 @@ extern float calibMiddle;
 extern float calibLowVal;  
 extern float calibHighVal; 
 extern std::vector<DataPoint> dataLog;
+extern unsigned long lastSensorUpdateTime;
 
 // PID Gains (Externally linked from main.cpp)
 extern float gain_p;
@@ -103,6 +104,7 @@ String getHTML() {
     html += String(selectedStrategy); 
     
     html += R"rawliteral(</strong>
+            <br>Last Sensor Time: <strong>)rawliteral" + String(lastSensorUpdateTime) + R"rawliteral( ms</strong>
             <div class="gains-display">
                 <strong>Current Gains:</strong> 
                 P: )rawliteral" + String(gain_p) + 

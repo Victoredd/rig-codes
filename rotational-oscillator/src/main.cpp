@@ -139,8 +139,8 @@ float runControl(float sensorValue, int selectedStrategy) {
     default: return 0.0;
     case 1: return gain_p * error;
     case 2: { 
-      if (error > 0) return gain_p; 
-      else if (error < 0) return -gain_p; 
+      if (error > 0) return 1.0; 
+      else if (error < 0) return -1.0; 
       else return 0.0; 
     }
     case 3: { 

@@ -95,7 +95,7 @@ void loop() {
 
   Feel like supporting our work? Buy a board from SparkFun!
   https://www.sparkfun.com/products/22857
-*/
+
 #include <Arduino.h>
 #include <Wire.h>
 #include "SparkFun_BNO08x_Arduino_Library.h"
@@ -105,17 +105,12 @@ BNO08x gyro;
 void setup() {
   delay(7000);
   Serial.begin(115200);
-  while (!Serial) delay(10); // Wait for serial monitor
 
   Serial.println("Initializing I2C...");
-  Wire.begin(21, 22);
-  Wire.setClock(400000); // Fast mode
+  Wire.begin(21, 22); 
+  Wire.setClock(100000); // 100kHz
 
-  Serial.println("Initializing BNO08x...");
-  if (gyro.begin(0x4B, Wire) == false) {
-    Serial.println("BNO08x not detected via I2C. Freeze/Reset.");
-    while (1);
-  }
+  gyro.begin(0x4B, Wire, -1, -1); 
 
   // Enable Game Rotation Vector (No magnetometer, just Gyro+Accel)
   // 50ms report interval = 20Hz updates for reading
@@ -143,8 +138,8 @@ void loop() {
     }
   }
 }
-
-/* i2c scanner
+*/
+/* i2c scanner */
 #include <Arduino.h>
 #include <Wire.h>
 
@@ -201,4 +196,3 @@ void loop() {
     Serial.println("\n--- Scan complete. Next scan in 3 seconds ---");
     delay(3000);
 }
-*/

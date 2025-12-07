@@ -8,8 +8,7 @@ However, all other code, unless stated otherwise, has been programmed by myself
 /**
  * @file web.cpp
  * * Handles all Wi-Fi, mDNS, and Web Server functionality for the ESP32.
- * Provides a web interface to start/stop the experiment, download data,
- * trigger calibration, and select a control strategy.
+ * * CONFIGURED AS ACCESS POINT (HOTSPOT).
  */
 
 #include <WiFi.h>
@@ -21,51 +20,53 @@ However, all other code, unless stated otherwise, has been programmed by myself
 // Type Definitions (from main file)
 // ----------------------------------------------------------------------------
 
-// Data structure for logging
 struct DataPoint {
     uint32_t timestamp;
     float sensorValue;
     int selectedSensor;
+    float error;
     float controlOutput;
-    int selectedStrategy;
+    int strategyUsed;
 };
 
 // ----------------------------------------------------------------------------
 // External State Variables (defined in main.cpp)
 // ----------------------------------------------------------------------------
 
-// These variables are controlled by the web server
 extern volatile bool running;
 extern volatile int selectedStrategy;
 extern volatile int selectedSensor;
-
-// This data log is read by the web server for download
+extern float calibMiddle; 
+extern float calibLowVal;  
+extern float calibHighVal; 
 extern std::vector<DataPoint> dataLog;
+extern unsigned long lastSensorUpdateTime;
+
+// PID Gains (Externally linked from main.cpp)
+extern float gain_p;
+extern float gain_i;
+extern float gain_d;
+
+// Helper function from main.cpp
+String getBufferCSV();
+void calibrateLowStep(int selectedSensor);
+void calibrateHighStep(int selectedSensor);
 
 // ----------------------------------------------------------------------------
 // Web Server Globals
 // ----------------------------------------------------------------------------
 
-// Wi-Fi Credentials
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "ESP32-Control";
+const char* password = "12345678"; 
 
-// WebServer object
 WebServer server(80);
 
 // ----------------------------------------------------------------------------
-// Placeholder / Stub Functions (to be implemented in main.cpp)
+// HTML Helper
 // ----------------------------------------------------------------------------
 
-// Forward declaration (calibrate is declared in main.cpp)
-void calibrate(int selectedSensor);
-
-// ----------------------------------------------------------------------------
-// HTML/CSS for Web UI
-// ----------------------------------------------------------------------------
-
-// We store the HTML page in PROGMEM (Flash) to save RAM
-const char MAIN_page[] PROGMEM = R"rawliteral(
+String getHTML() {
+    String html = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
@@ -73,108 +74,184 @@ const char MAIN_page[] PROGMEM = R"rawliteral(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
-        h1 { color: #333; }
+        h1 { color: #333; text-align: center; }
         .container { max-width: 600px; margin: auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        button, select {
-            display: block;
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            font-size: 16px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            box-sizing: border-box; /* Ensures padding doesn't affect width */
-        }
+        button, select, input { display: block; width: 100%; padding: 12px; margin: 10px 0; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; box-sizing: border-box; }
+        input { border: 1px solid #ccc; background: #fff; }
         select { background: #eee; }
-        button { background: #007bff; color: white; }
-        button:hover { background: #0056b3; }
-        .start { background: #28a745; }
-        .start:hover { background: #218838; }
-        .stop { background: #dc3545; }
-        .stop:hover { background: #c82333; }
-        .download { background: #17a2b8; }
-        .download:hover { background: #138496; }
-        form { margin-bottom: 10px; }
+        button { color: white; }
+        .start { background: #28a745; } .start:hover { background: #218838; }
+        .stop { background: #dc3545; } .stop:hover { background: #c82333; }
+        .calib { background: #ffc107; color: #333; } .calib:hover { background: #e0a800; }
+        .download { background: #17a2b8; } .download:hover { background: #138496; }
+        .btn-blue { background: #007bff; } .btn-blue:hover { background: #0056b3; }
+        .status-box { text-align: center; margin-bottom: 20px; padding: 10px; background: #eee; border-radius: 5px;}
+        .status-dot { height: 15px; width: 15px; border-radius: 50%; display: inline-block; margin-right: 8px; vertical-align: middle; }
+        .running { background-color: #28a745; box-shadow: 0 0 8px #28a745; }
+        .stopped { background-color: #dc3545; }
+        .gains-display { font-size: 0.9em; margin-top: 5px; color: #555; }
+        #dataCount { font-weight: bold; color: #555; text-align: center; display: block; margin-top: 10px;}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>ESP32 Motor Control</h1>
 
-        <form action="/start" method="GET">
-            <button class="start" type="submit">Start Experiment</button>
-        </form>
-        <form action="/stop" method="GET">
-            <button class="stop" type="submit">Stop Experiment</button>
+        <div class="status-box">
+            Status: <span id="statusDot" class="status-dot stopped"></span> <strong id="statusText">STOPPED</strong>
+            <br>Current Strategy: <strong id="stratDisp">)rawliteral";
+            
+    html += String(selectedStrategy); 
+    
+    html += R"rawliteral(</strong>
+            <br>Last Sensor Time: <strong>)rawliteral" + String(lastSensorUpdateTime) + R"rawliteral( ms</strong>
+            <div class="gains-display">
+                <strong>Current Gains:</strong> 
+                P: )rawliteral" + String(gain_p) + 
+                " | I: " + String(gain_i) + 
+                " | D: " + String(gain_d) + R"rawliteral(
+            </div>
+        </div>
+
+        <form action="/start" method="GET" onsubmit="startPolling()"><button class="start" type="submit">Start Experiment</button></form>
+        <form action="/stop" method="GET" onsubmit="stopPolling()"><button class="stop" type="submit">Stop Experiment</button></form>
+
+        <span id="dataCount">Recorded Points in Browser: 0</span>
+
+        <hr>
+        <button class="download" onclick="downloadCSV()">Download Accumulated Data</button>
+
+        <hr>
+        <h3>PID Tuning</h3>
+        <form action="/setPID" method="GET">
+            <label>P Gain: <input type="number" step="0.001" name="p" value=")rawliteral" + String(gain_p) + R"rawliteral("></label>
+            <label>I Gain: <input type="number" step="0.001" name="i" value=")rawliteral" + String(gain_i) + R"rawliteral("></label>
+            <label>D Gain: <input type="number" step="0.001" name="d" value=")rawliteral" + String(gain_d) + R"rawliteral("></label>
+            <button class="btn-blue" type="submit">Update Gains</button>
         </form>
 
         <hr>
+        <h3>Calibration</h3>
+        <p>1. Move rig to LOW position (Last: <strong>)rawliteral" + String(calibLowVal) + R"rawliteral(</strong>):</p>
+        <form action="/calibLow" method="GET"><button class="calib" type="submit">Record Low</button></form>
+        <p>2. Move rig to HIGH position (Last: <strong>)rawliteral" + String(calibHighVal) + R"rawliteral(</strong>):</p>
+        <form action="/calibHigh" method="GET"><button class="calib" type="submit">Record High</button></form>
+        <p><em>Calculated Middle: )rawliteral";
+        
+    html += String(calibMiddle);
 
-        <form action="/calibrate" method="GET">
-            <button type="submit">Calibrate</button>
-        </form>
-        <form action="/download" method="GET">
-            <button class="download" type="submit">Download CSV Data</button>
-        </form>
+    html += R"rawliteral(</em></p>
         
         <hr>
-
         <form action="/setStrategy" method="GET">
             <label for="strategy">Control Strategy:</label>
             <select name="value" id="strategy">
-                <option value="0">Strategy 0 (e.g., PID)</option>
-                <option value="1">Strategy 1 (e.g., P-Only)</option>
-                <option value="2">Strategy 2 (e.g., ON/OFF)</option>
+                <option value="0">Strategy 0 (Idle)</option>
+                <option value="1">Strategy 1 (P-Only)</option>
+                <option value="2">Strategy 2 (ON/OFF)</option>
+                <option value="3">Strategy 3 (PID)</option>
             </select>
-            <button type="submit">Set Strategy</button>
+            <button class="btn-blue" type="submit">Set Strategy</button>
         </form>
     </div>
+
+    <script>
+        // -- JAVASCRIPT STREAMING LOGIC --
+        let allData = "timestamp,sensorValue,selectedSensor,error,controlOutput,strategyUsed\n";
+        let pointCount = 0;
+        let pollInterval = null;
+        
+        const isRunning = )rawliteral";
+    html += (running ? "true" : "false");
+    html += R"rawliteral(;
+
+        if(isRunning) {
+            document.getElementById("statusDot").className = "status-dot running";
+            document.getElementById("statusText").innerText = "RUNNING";
+            startPolling(); 
+        }
+
+        function startPolling() {
+            if(pollInterval) clearInterval(pollInterval);
+            // Fetch chunks every 1 second
+            pollInterval = setInterval(fetchDataChunk, 1000);
+        }
+
+        function stopPolling() {
+            setTimeout(fetchDataChunk, 500); // One last fetch
+            if(pollInterval) clearInterval(pollInterval);
+        }
+
+        function fetchDataChunk() {
+            fetch('/pollData')
+                .then(response => response.text())
+                .then(data => {
+                    if(data.length > 5) { // If valid csv chunk
+                        allData += data;
+                        let lines = data.split("\n").length - 1;
+                        pointCount += lines;
+                        document.getElementById("dataCount").innerText = "Recorded Points in Browser: " + pointCount;
+                    }
+                })
+                .catch(err => console.error("Poll error:", err));
+        }
+
+        function downloadCSV() {
+            const blob = new Blob([allData], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'experiment_log.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
 </body>
 </html>
 )rawliteral";
+    return html;
+}
 
 // ----------------------------------------------------------------------------
 // Web Server Route Handlers
 // ----------------------------------------------------------------------------
 
-/**
- * @brief Serves the main HTML page.
- */
 void handleRoot() {
-    server.send(200, "text/html", MAIN_page);
+    server.send(200, "text/html", getHTML());
 }
 
-/**
- * @brief Sets the 'running' flag to true and redirects to root.
- */
 void handleStart() {
     running = true;
-    server.sendHeader("Location", "/"); // Redirect back to home page
+    server.sendHeader("Location", "/"); 
     server.send(302, "text/plain", "Starting...");
 }
 
-/**
- * @brief Sets the 'running' flag to false and redirects to root.
- */
 void handleStop() {
     running = false;
     server.sendHeader("Location", "/");
     server.send(302, "text/plain", "Stopping...");
 }
 
-/**
- * @brief Calls the calibrate() function and redirects to root.
- */
-void handleCalibrate() {
-    calibrate(selectedSensor);
-    server.sendHeader("Location", "/");
-    server.send(302, "text/plain", "Calibrating...");
+// NEW: Polling Endpoint
+void handlePollData() {
+    String chunk = getBufferCSV();
+    server.send(200, "text/plain", chunk);
 }
 
-/**
- * @brief Reads the 'value' query parameter and updates 'selectedStrategy'.
- */
+void handleCalibLow() {
+    calibrateLowStep(selectedSensor);
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "Low Set");
+}
+
+void handleCalibHigh() {
+    calibrateHighStep(selectedSensor);
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "High Set");
+}
+
 void handleSetStrategy() {
     if (server.hasArg("value")) {
         int strategy = server.arg("value").toInt();
@@ -184,79 +261,60 @@ void handleSetStrategy() {
     server.send(302, "text/plain", "Strategy set.");
 }
 
-/**
- * @brief Generates a CSV from the dataLog and sends it as a file.
- */
-void handleDownload() {
-    // Use a String to build the CSV content.
-    // For very large logs, streaming the content is better, but this is simpler.
-    String csv = "";
+// NEW: PID Update Endpoint
+void handleSetPID() {
+    if (server.hasArg("p")) gain_p = server.arg("p").toFloat();
+    if (server.hasArg("i")) gain_i = server.arg("i").toFloat();
+    if (server.hasArg("d")) gain_d = server.arg("d").toFloat();
     
-    // Add CSV Header
-    csv += "timestamp,sensorValue,selectedSensor,controlOutput,strategyUsed\n";
-
-    // Add data rows
-    // We lock access here if necessary, but vector read is mostly safe.
-    // If dataLog can be written to by an ISR, you MUST disable interrupts here.
-    for (const auto& dp : dataLog) {
-        csv += String(dp.timestamp) + ",";
-        csv += String(dp.sensorValue) + ",";
-        csv += String(dp.selectedSensor) + ",";
-        csv += String(dp.controlOutput) + ",";
-        csv += String(dp.selectedStrategy) + "\n";
-    }
-
-    // Send the CSV file as an attachment
-    server.sendHeader("Content-Disposition", "attachment; filename=datalog.csv");
-    server.send(200, "text/csv", csv);
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "PID Updated");
 }
 
-/**
- * @brief Handles 404 Not Found errors.
- */
+void handleDownload() {
+    // Legacy download handler (optional, but kept for compatibility)
+    // The JS downloadCSV() is now the primary method.
+    server.send(200, "text/plain", "Use the button on the page to download streamed data.");
+}
+
 void handleNotFound() {
     server.send(404, "text/plain", "404: Not Found");
 }
 
 // ----------------------------------------------------------------------------
-// Public Functions (to be called from main.cpp)
+// Public Functions
 // ----------------------------------------------------------------------------
 
-/**
- * @brief Initializes WiFi, mDNS, and the WebServer routes.
- * Call this once from your setup() function.
- */
 void initWebServer() {
-    // Start Wi-Fi
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-    }
-    // Start mDNS
-    if (!MDNS.begin("esprig")) {
-        // shouldn't happen (hopefully)
-    } else {
-        MDNS.addService("http", "tcp", 80);
-        // should be accesible at http://esprig.local
+    WiFi.mode(WIFI_AP);
+    Serial.println("Creating Access Point...");
+    WiFi.softAP(ssid, password);
+
+    IPAddress myIP = WiFi.softAPIP();
+    Serial.print("AP Created! Network Name: ");
+    Serial.println(ssid);
+    Serial.print("Connect to this network and visit: http://");
+    Serial.println(myIP);
+
+    if (MDNS.begin("esprig")) {
+        Serial.println("mDNS responder started: http://esprig.local");
     }
 
-    // Define WebServer Routes
     server.on("/", HTTP_GET, handleRoot);
     server.on("/start", HTTP_GET, handleStart);
     server.on("/stop", HTTP_GET, handleStop);
-    server.on("/calibrate", HTTP_GET, handleCalibrate);
+    server.on("/calibLow", HTTP_GET, handleCalibLow);
+    server.on("/calibHigh", HTTP_GET, handleCalibHigh);
     server.on("/setStrategy", HTTP_GET, handleSetStrategy);
+    server.on("/setPID", HTTP_GET, handleSetPID); // New PID handler
+    server.on("/pollData", HTTP_GET, handlePollData); 
     server.on("/download", HTTP_GET, handleDownload);
     server.onNotFound(handleNotFound);
 
-    // Start the server
     server.begin();
+    Serial.println("HTTP server started");
 }
 
-/**
- * @brief Handles incoming web server client requests.
- * Call this in your main loop() function.
- */
 void handleWebServer() {
     server.handleClient();
 }
