@@ -35,7 +35,7 @@ struct DataPoint {
 
 extern volatile bool running;
 extern volatile int selectedStrategy;
-extern volatile int selectedSensor;
+extern volatile int selectedSensor; // Now actively used
 extern float calibMiddle; 
 extern float calibLowVal;  
 extern float calibHighVal; 
@@ -104,7 +104,14 @@ String getHTML() {
     html += String(selectedStrategy); 
     
     html += R"rawliteral(</strong>
-            <br>Last Sensor Time: <strong>)rawliteral" + String(lastSensorUpdateTime) + R"rawliteral( ms</strong>
+            <br>Current Sensor: <strong>)rawliteral";
+    
+    // Display Sensor Name
+    if (selectedSensor == 1) html += "DPS368 (Pressure)";
+    else if (selectedSensor == 2) html += "TOF0200C (Distance)";
+    else html += "None Selected";
+
+    html += R"rawliteral(</strong>
             <div class="gains-display">
                 <strong>Current Gains:</strong> 
                 P: )rawliteral" + String(gain_p) + 
@@ -120,6 +127,33 @@ String getHTML() {
 
         <hr>
         <button class="download" onclick="downloadCSV()">Download Accumulated Data</button>
+
+        <hr>
+        <h3>Configuration</h3>
+        
+        <form action="/setSensor" method="GET">
+            <label for="sensor">Select Sensor:</label>
+            <select name="sensor" id="sensor">
+                <option value="1" )rawliteral";
+                if(selectedSensor == 1) html += "selected";
+                html += R"rawliteral(>DPS368 (Pressure)</option>
+                <option value="2" )rawliteral";
+                if(selectedSensor == 2) html += "selected";
+                html += R"rawliteral(>TOF0200C (Distance)</option>
+            </select>
+            <button class="btn-blue" type="submit">Set Sensor</button>
+        </form>
+
+        <form action="/setStrategy" method="GET">
+            <label for="strategy">Control Strategy:</label>
+            <select name="value" id="strategy">
+                <option value="0">Strategy 0 (Idle)</option>
+                <option value="1">Strategy 1 (P-Only)</option>
+                <option value="2">Strategy 2 (ON/OFF)</option>
+                <option value="3">Strategy 3 (PID)</option>
+            </select>
+            <button class="btn-blue" type="submit">Set Strategy</button>
+        </form>
 
         <hr>
         <h3>PID Tuning</h3>
@@ -141,18 +175,6 @@ String getHTML() {
     html += String(calibMiddle);
 
     html += R"rawliteral(</em></p>
-        
-        <hr>
-        <form action="/setStrategy" method="GET">
-            <label for="strategy">Control Strategy:</label>
-            <select name="value" id="strategy">
-                <option value="0">Strategy 0 (Idle)</option>
-                <option value="1">Strategy 1 (P-Only)</option>
-                <option value="2">Strategy 2 (ON/OFF)</option>
-                <option value="3">Strategy 3 (PID)</option>
-            </select>
-            <button class="btn-blue" type="submit">Set Strategy</button>
-        </form>
     </div>
 
     <script>
@@ -261,6 +283,15 @@ void handleSetStrategy() {
     server.send(302, "text/plain", "Strategy set.");
 }
 
+// NEW: Sensor Selection Endpoint
+void handleSetSensor() {
+    if (server.hasArg("sensor")) {
+        selectedSensor = server.arg("sensor").toInt();
+    }
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "Sensor set.");
+}
+
 // NEW: PID Update Endpoint
 void handleSetPID() {
     if (server.hasArg("p")) gain_p = server.arg("p").toFloat();
@@ -272,8 +303,6 @@ void handleSetPID() {
 }
 
 void handleDownload() {
-    // Legacy download handler (optional, but kept for compatibility)
-    // The JS downloadCSV() is now the primary method.
     server.send(200, "text/plain", "Use the button on the page to download streamed data.");
 }
 
@@ -306,7 +335,8 @@ void initWebServer() {
     server.on("/calibLow", HTTP_GET, handleCalibLow);
     server.on("/calibHigh", HTTP_GET, handleCalibHigh);
     server.on("/setStrategy", HTTP_GET, handleSetStrategy);
-    server.on("/setPID", HTTP_GET, handleSetPID); // New PID handler
+    server.on("/setSensor", HTTP_GET, handleSetSensor); // Registered new handler
+    server.on("/setPID", HTTP_GET, handleSetPID);
     server.on("/pollData", HTTP_GET, handlePollData); 
     server.on("/download", HTTP_GET, handleDownload);
     server.onNotFound(handleNotFound);
